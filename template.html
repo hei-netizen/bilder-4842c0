@@ -48,16 +48,20 @@ main{max-width:1280px;margin:0 auto;padding:4px 0 calc(110px + var(--safe-b))}
 @media(min-width:640px){.grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;padding:0 var(--gutter)}}
 .tile{position:relative;aspect-ratio:1;background:var(--surface);overflow:hidden;display:block;width:100%}
 @media(min-width:640px){.tile{border-radius:10px}}
-.tile img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s,transform .25s}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s,transform .25s;transform:rotate(var(--r,0deg))}
 .tile img.ok{opacity:1}
-.tile:active img{transform:scale(.97)}
+.tile:active img{transform:rotate(var(--r,0deg)) scale(.97)}
+.saved{position:absolute;left:6px;bottom:6px;display:none;align-items:center;gap:3px;font-size:12px;font-weight:700;
+  padding:3px 8px 3px 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink)}
+.tile.is-saved .saved{display:flex}
+.tile.is-saved img{filter:saturate(.75) brightness(.85)}
 .badge{position:absolute;right:6px;bottom:6px;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;
   padding:3px 7px;border-radius:999px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .check{position:absolute;right:6px;top:6px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;
   background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center}
 .selecting .check{display:flex}
 .tile.sel .check{background:var(--accent);border-color:var(--accent)}
-.tile.sel img{transform:scale(.9);border-radius:8px}
+.tile.sel img{transform:rotate(var(--r,0deg)) scale(.9);border-radius:8px}
 .check svg{opacity:0}.tile.sel .check svg{opacity:1}
 
 /* Select bar */
@@ -81,6 +85,7 @@ main{max-width:1280px;margin:0 auto;padding:4px 0 calc(110px + var(--safe-b))}
 .iconbtn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12)}
 .stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
 .stage img,.stage video{max-width:100%;max-height:100%;object-fit:contain;display:block;user-select:none;-webkit-user-select:none}
+.stage img{max-width:none;max-height:none;flex:none;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
 .stage .track{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
 .nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:none}
 @media(hover:hover){.nav{display:flex}}
@@ -118,7 +123,7 @@ main{max-width:1280px;margin:0 auto;padding:4px 0 calc(110px + var(--safe-b))}
   </div>
   <p class="hint" id="hint" hidden>
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-    <span>Trykk «Lagre på iPhone» → trykk <b>«…» / «More»</b> nederst i delingsmenyen → <b>«Save Image» / «Save Video»</b> (norsk: «Arkiver bilde/video»). Da havner det rett i Bilder-appen. Bilder kan også lagres ved å holde fingeren på bildet → «Legg til i Bilder».</span>
+    <span>Trykk «Lagre på iPhone» → trykk <b>«…» / «More»</b> nederst i delingsmenyen → <b>«Save Image» / «Save Video»</b> (norsk: «Arkiver bilde/video»). Da havner det rett i Bilder-appen. Står et bilde feil vei? Trykk ↻ øverst til høyre — det lagres rotert.</span>
   </p>
 </header>
 
@@ -133,7 +138,7 @@ main{max-width:1280px;margin:0 auto;padding:4px 0 calc(110px + var(--safe-b))}
   <div class="vtop">
     <button class="iconbtn" id="vClose" aria-label="Lukk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <div class="ctr" id="vCtr"></div>
-    <span style="width:44px"></span>
+    <button class="iconbtn" id="vRot" aria-label="Roter 90°"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button>
   </div>
   <div class="stage" id="stage"></div>
   <button class="iconbtn nav prev" id="vPrev" aria-label="Forrige"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -159,24 +164,60 @@ const dur = s => { s = Math.round(s); return Math.floor(s/60) + ':' + String(s%6
 
 let filter = 'all', list = ITEMS, selecting = false, sel = new Set(), cur = -1;
 
-// --- File cache (Web Share must be called directly from a tap, so we fetch ahead of time) ---
-const cache = new Map();
+// --- Per-viewer memory: what's been saved, and chosen rotation (kept in this browser only) ---
+function load(k, d){ try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } }
+function persist(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+const saved = new Set(load('saved', []));
+const rot = load('rot', {});   // filename -> 90 | 180 | 270
+const angle = {};              // filename -> cumulative degrees, so the animation always turns clockwise
+const rotOf = it => it.t === 'i' ? (rot[it.n] || 0) : 0;
+function markSaved(items){
+  items.forEach(i => saved.add(i.n)); persist('saved', [...saved]);
+  items.forEach(updateTile); updateSub();
+}
+
+// --- File cache (Web Share must be called directly from a tap, so files are fetched and rotated ahead of time) ---
+const cache = new Map(), ready = new Map();
+const keyOf = it => it.f + '@' + rotOf(it);
+async function rotateBlob(b, r){
+  const bmp = await createImageBitmap(b);
+  const odd = r % 180 !== 0, c = document.createElement('canvas');
+  c.width = odd ? bmp.height : bmp.width; c.height = odd ? bmp.width : bmp.height;
+  const x = c.getContext('2d');
+  x.translate(c.width / 2, c.height / 2); x.rotate(r * Math.PI / 180); x.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+  bmp.close && bmp.close();
+  const out = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
+  c.width = c.height = 0;
+  if (!out) throw new Error('canvas');
+  return out;
+}
 function getFile(it){
-  if (!cache.has(it.f)) {
-    const p = fetch(it.f).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+  const key = keyOf(it), r = rotOf(it);
+  if (!cache.has(key)) {
+    const p = fetch(it.f).then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); })
+      .then(b => r ? rotateBlob(b, r) : b)
       .then(b => new File([b], it.n, {type: mime(it)}));
-    p.catch(() => cache.delete(it.f));
-    cache.set(it.f, p);
+    p.catch(() => cache.delete(key));
+    cache.set(key, p);
     if (cache.size > 12) cache.delete(cache.keys().next().value);
   }
-  return cache.get(it.f);
+  return cache.get(key);
 }
-const ready = new Map(); // f -> File, once resolved
-async function warm(it){ const f = await getFile(it); ready.set(it.f, f); if (ready.size > 12) ready.delete(ready.keys().next().value); return f; }
+async function warm(it){
+  const key = keyOf(it), f = await getFile(it);
+  ready.set(key, f); if (ready.size > 12) ready.delete(ready.keys().next().value);
+  return f;
+}
 
 function toast(msg, ms=2800){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); }
 
-function download(it){ const a = document.createElement('a'); a.href = it.f; a.download = it.n; document.body.appendChild(a); a.click(); a.remove(); }
+async function download(it){
+  let href = it.f, url;
+  if (rotOf(it)) { url = URL.createObjectURL(await getFile(it)); href = url; }
+  const a = document.createElement('a'); a.href = href; a.download = it.n; document.body.appendChild(a); a.click(); a.remove();
+  if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
+  markSaved([it]);
+}
 
 async function shareFiles(files){
   try { await navigator.share({files}); return true; }
@@ -184,10 +225,20 @@ async function shareFiles(files){
 }
 
 // --- Grid ---
+const tileEls = {};
+function updateTile(it){
+  const b = tileEls[it.n]; if (!b) return;
+  b.classList.toggle('is-saved', saved.has(it.n));
+  b.querySelector('img').style.setProperty('--r', rotOf(it) + 'deg');
+}
+function updateSub(){
+  const nI = ITEMS.filter(i => i.t === 'i').length, nV = ITEMS.length - nI;
+  const nS = ITEMS.filter(i => saved.has(i.n)).length;
+  $('#sub').textContent = `${nI} bilder · ${nV} videoer` + (nS ? ` · ${nS} av ${ITEMS.length} lagret` : '');
+}
 function render(){
   list = filter === 'all' ? ITEMS : ITEMS.filter(i => i.t === filter);
-  const nI = ITEMS.filter(i => i.t === 'i').length, nV = ITEMS.length - nI;
-  $('#sub').textContent = `${nI} bilder · ${nV} videoer`;
+  updateSub();
   grid.innerHTML = '';
   const frag = document.createDocumentFragment();
   list.forEach((it, idx) => {
@@ -198,8 +249,10 @@ function render(){
     img.onload = () => img.classList.add('ok');
     b.appendChild(img);
     if (it.t === 'v') b.insertAdjacentHTML('beforeend', `<span class="badge"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1l7 4-7 4z" fill="#fff"/></svg>${dur(it.d)}</span>`);
+    b.insertAdjacentHTML('beforeend', '<span class="saved"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>Lagret</span>');
     b.insertAdjacentHTML('beforeend', '<span class="check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1608" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>');
     b.onclick = () => selecting ? toggle(it, b) : open(idx);
+    tileEls[it.n] = b; updateTile(it);
     frag.appendChild(b);
   });
   grid.appendChild(frag);
@@ -212,6 +265,7 @@ document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
 });
 
 // --- Selection ---
+let prepared = null; // Array<File> ready to share
 function setSelecting(on){
   selecting = on; sel.clear(); prepared = null;
   document.body.classList.toggle('selecting', on);
@@ -229,7 +283,6 @@ $('#allBtn').onclick = () => {
 };
 function toggle(it, el){ sel.has(it.f) ? sel.delete(it.f) : sel.add(it.f); el.classList.toggle('sel', sel.has(it.f)); prepared = null; updateSel(); }
 
-let prepared = null; // Array<File> ready to share
 function updateSel(){
   const items = ITEMS.filter(i => sel.has(i.f));
   const size = items.reduce((a, i) => a + i.s, 0);
@@ -242,10 +295,10 @@ function updateSel(){
 $('#selSave').onclick = async () => {
   const items = ITEMS.filter(i => sel.has(i.f));
   if (!canShareFiles) {
-    for (const it of items) { download(it); await new Promise(r => setTimeout(r, 450)); }
+    for (const it of items) { await download(it); await new Promise(r => setTimeout(r, 450)); }
     return;
   }
-  if (prepared) { if (await shareFiles(prepared)) toast('Ferdig ✓'); return; }
+  if (prepared) { if (await shareFiles(prepared)) { markSaved(items); toast('Ferdig ✓'); } return; }
   const btn = $('#selSave'); btn.disabled = true;
   let done = 0;
   btn.innerHTML = `<span class="spin"></span> 0 / ${items.length}`;
@@ -265,15 +318,40 @@ function open(idx){
 }
 function close(fromPop){
   if (!viewer.classList.contains('open')) return;
-  stage.querySelector('video')?.pause();
+  const v = stage.querySelector('video'); if (v) v.pause();
   viewer.classList.remove('open'); stage.innerHTML = ''; document.body.style.overflow = '';
   if (!fromPop) history.back();
 }
 window.addEventListener('popstate', () => close(true));
 
+function fitImg(){
+  const it = list[cur], el = stage.querySelector('img'); if (!el || !it || it.t !== 'i') return;
+  const r = rotOf(it), [w, h] = it.wh, odd = r % 180 !== 0;
+  const s = Math.min(stage.clientWidth / (odd ? h : w), stage.clientHeight / (odd ? w : h));
+  el.style.width = w * s + 'px'; el.style.height = h * s + 'px';
+  el.style.transform = `rotate(${angle[it.n] ?? r}deg)`;
+}
+window.addEventListener('resize', fitImg);
+
+function shareLabel(it){
+  if (saved.has(it.n)) return 'Lagret ✓ · Lagre igjen';
+  return it.t === 'v' ? 'Lagre video' : 'Lagre på iPhone';
+}
+function prepShare(it){
+  const sh = $('#vShare');
+  if (!canShareFiles) { sh.hidden = true; $('#vDl').classList.replace('ghost', 'primary'); return; }
+  sh.hidden = false;
+  if (ready.has(keyOf(it))) { sh.disabled = false; sh.textContent = shareLabel(it); return; }
+  sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Gjør klar';
+  const key = keyOf(it);
+  warm(it).then(() => { if (list[cur] === it && keyOf(it) === key) { sh.disabled = false; sh.textContent = shareLabel(it); } })
+    .catch(() => { if (list[cur] === it) { sh.textContent = 'Feil — prøv igjen'; sh.disabled = false; } });
+}
+
 function show(){
   const it = list[cur]; if (!it) return;
   $('#vCtr').textContent = `${cur + 1} / ${list.length}`;
+  $('#vRot').style.visibility = it.t === 'i' ? 'visible' : 'hidden';
   stage.innerHTML = '';
   let el;
   if (it.t === 'v') {
@@ -283,39 +361,41 @@ function show(){
     el = new Image(); el.src = it.w; el.alt = it.n; el.draggable = false;
     el.onclick = () => viewer.classList.toggle('chrome-off');
   }
-  stage.appendChild(el);
+  stage.appendChild(el); fitImg();
   const dl = $('#vDl'); dl.href = it.f; dl.download = it.n;
   dl.textContent = `Last ned · ${mb(it.s)}`;
-  const sh = $('#vShare');
-  if (canShareFiles) {
-    sh.hidden = false; dl.classList.replace('primary','ghost');
-    const label = it.t === 'v' ? 'Lagre video' : 'Lagre på iPhone';
-    if (ready.has(it.f)) { sh.disabled = false; sh.textContent = label; }
-    else {
-      sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Gjør klar';
-      warm(it).then(() => { if (list[cur] === it) { sh.disabled = false; sh.textContent = label; } })
-        .catch(() => { if (list[cur] === it) sh.textContent = 'Feil — prøv igjen'; sh.disabled = false; });
-    }
-  } else { sh.hidden = true; dl.classList.replace('ghost','primary'); }
+  prepShare(it);
   // preload neighbours' preview images
   [list[cur+1], list[cur-1]].forEach(n => { if (n && n.t === 'i') { const p = new Image(); p.src = n.w; } });
 }
-function go(d){ const n = cur + d; if (n < 0 || n >= list.length) return; stage.querySelector('video')?.pause(); cur = n; show(); }
-$('#vShare').onclick = async () => {
-  const it = list[cur], f = ready.get(it.f);
-  if (!f) { warm(it).then(show); return; }
-  if (await shareFiles([f])) toast('Lagret ✓');
+function go(d){ const n = cur + d; if (n < 0 || n >= list.length) return; const v = stage.querySelector('video'); if (v) v.pause(); cur = n; show(); }
+
+$('#vRot').onclick = () => {
+  const it = list[cur]; if (!it || it.t !== 'i') return;
+  const r = (rotOf(it) + 90) % 360;
+  angle[it.n] = (angle[it.n] ?? rotOf(it)) + 90;
+  if (r) rot[it.n] = r; else delete rot[it.n];
+  persist('rot', rot);
+  prepared = null;
+  fitImg(); updateTile(it); prepShare(it);
 };
+$('#vShare').onclick = async () => {
+  const it = list[cur], f = ready.get(keyOf(it));
+  if (!f) { prepShare(it); return; }
+  if (await shareFiles([f])) { markSaved([it]); $('#vShare').textContent = shareLabel(it); toast('Lagret ✓'); }
+};
+$('#vDl').onclick = e => { e.preventDefault(); download(list[cur]).then(() => prepShare(list[cur])); };
 $('#vClose').onclick = () => close();
 $('#vPrev').onclick = () => go(-1);
 $('#vNext').onclick = () => go(1);
 document.addEventListener('keydown', e => {
   if (!viewer.classList.contains('open')) return;
   if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1);
+  else if (e.key === 'r') $('#vRot').click();
 });
 // swipe
-let sx = 0, sy = 0, st = 0;
-stage.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now(); }, {passive:true});
+let sx = 0, sy = 0;
+stage.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, {passive:true});
 stage.addEventListener('touchend', e => {
   const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
   if (e.target.tagName === 'VIDEO' && Math.abs(dy) < 40 && Math.abs(dx) < 80) return;
