@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Bygger index.html fra media/-mappa. Kjør på nytt etter at nye filer er lagt inn."""
-import json, subprocess, pathlib
+import base64, json, subprocess, pathlib
 
 ROOT = pathlib.Path(__file__).parent
 MEDIA = ROOT / "media"
@@ -30,6 +30,9 @@ for p in sorted(list((MEDIA / "foto").glob("*.jpg")) + list((MEDIA / "video").gl
         "f": f"media/{'video' if is_video else 'foto'}/{p.name}",
         "s": p.stat().st_size,
     }
+    lqip = ROOT / ".lqip" / f"{p.stem}.jpg"
+    if lqip.exists():
+        it["b"] = "data:image/jpeg;base64," + base64.b64encode(lqip.read_bytes()).decode()
     if is_video:
         it["d"] = probe_duration(p)
     else:
