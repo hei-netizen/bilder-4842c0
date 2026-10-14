@@ -179,6 +179,9 @@ function markSaved(items){
 
 // --- File cache (Web Share must be called directly from a tap, so files are fetched and rotated ahead of time) ---
 const cache = new Map(), ready = new Map();
+const useHevc = isIOS;
+const src = it => useHevc && it.h ? it.h : it.f;          // file actually fetched/played/saved
+const sizeOf = it => useHevc && it.h ? it.hs : it.s;
 const keyOf = it => it.f + '@' + rotOf(it);
 async function rotateBlob(b, r){
   const bmp = await createImageBitmap(b);
@@ -192,6 +195,29 @@ async function rotateBlob(b, r){
   if (!out) throw new Error('canvas');
   return out;
 }
+// Streams the download so the save button can show how far along it is
+const prog = new Map();
+async function fetchBlob(url, key){
+  const res = await fetch(url); if (!res.ok) throw new Error(res.status);
+  const total = +res.headers.get('content-length') || 0;
+  if (!total || !res.body || !res.body.getReader) return res.blob();
+  const reader = res.body.getReader(), chunks = []; let got = 0, last = 0;
+  for (;;) {
+    const {done, value} = await reader.read(); if (done) break;
+    chunks.push(value); got += value.length; prog.set(key, got / total);
+    if (Date.now() - last > 150) { last = Date.now(); onProg(key); }
+  }
+  prog.delete(key);
+  return new Blob(chunks, {type: res.headers.get('content-type') || ''});
+}
+function onProg(key){
+  const it = list[cur];
+  if (!viewer.classList.contains('open') || !it || keyOf(it) !== key) return;
+  const sh = $('#vShare'), pct = Math.round((prog.get(key) || 0) * 100) + ' %';
+  if (sh.dataset.busy) sh.innerHTML = `<span class="spin"></span> Henter ${pct}`;
+  else if (!ready.has(key)) sh.textContent = `${shareLabel(it)} · ${pct}`;
+}
+
 // Background prefetches go through a small queue so they don't choke the connection;
 // "urgent" fetches (the file on screen) skip the queue.
 const CAP = 50, queue = [];
@@ -206,7 +232,7 @@ const queued = fn => new Promise((res, rej) => { queue.push([fn, res, rej]); pum
 function getFile(it, urgent){
   const key = keyOf(it), r = rotOf(it);
   if (!cache.has(key)) {
-    const run = () => fetch(it.f).then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); });
+    const run = () => fetchBlob(src(it), key);
     const p = (urgent ? run() : queued(run))
       .then(b => r ? rotateBlob(b, r) : b)
       .then(b => new File([b], it.n, {type: mime(it)}));
@@ -225,7 +251,7 @@ async function warm(it, urgent){
 function toast(msg, ms=2800){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); }
 
 async function download(it){
-  let href = it.f, url;
+  let href = src(it), url;
   if (rotOf(it)) { url = URL.createObjectURL(await getFile(it)); href = url; }
   const a = document.createElement('a'); a.href = href; a.download = it.n; document.body.appendChild(a); a.click(); a.remove();
   if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
@@ -309,7 +335,7 @@ function toggle(it, el){ sel.has(it.f) ? sel.delete(it.f) : sel.add(it.f); el.cl
 let selBusy = false;
 function updateSel(){
   const items = selected();
-  const size = items.reduce((a, i) => a + i.s, 0);
+  const size = items.reduce((a, i) => a + sizeOf(i), 0);
   const nReady = items.filter(i => ready.has(keyOf(i))).length;
   const status = !items.length ? 'Trykk på bildene du vil ha'
     : mb(size) + (canShareFiles && nReady < items.length ? ` · henter ${nReady}/${items.length}` : canShareFiles ? ' · klar' : '');
@@ -372,9 +398,10 @@ function shareLabel(it){
 function prepShare(it){
   const sh = $('#vShare');
   if (!canShareFiles) { sh.hidden = true; $('#vDl').classList.replace('ghost', 'primary'); return; }
-  sh.hidden = false; sh.disabled = false; sh.textContent = shareLabel(it);
+  sh.hidden = false; sh.disabled = false; delete sh.dataset.busy; sh.textContent = shareLabel(it);
   // fetch this original now, then the next photo's in the background
   warm(it, true).then(() => {
+    if (list[cur] === it && !sh.dataset.busy) sh.textContent = shareLabel(it);
     const n = list[cur + 1];
     if (list[cur] === it && n && n.t === 'i') warm(n).catch(() => {});
   }, () => {});
@@ -388,7 +415,7 @@ function show(){
   let el;
   if (it.t === 'v') {
     el = document.createElement('video');
-    el.src = it.f; el.controls = true; el.playsInline = true; el.preload = 'metadata'; el.poster = it.th;
+    el.src = src(it); el.controls = true; el.playsInline = true; el.preload = 'metadata'; el.poster = it.th;
   } else {
     // Show the already-cached thumbnail instantly, swap in the sharper proxy when it's decoded
     el = new Image(); el.src = it.th; el.alt = it.n; el.draggable = false;
@@ -397,8 +424,8 @@ function show(){
     el.onclick = () => viewer.classList.toggle('chrome-off');
   }
   stage.appendChild(el); fitImg();
-  const dl = $('#vDl'); dl.href = it.f; dl.download = it.n;
-  dl.textContent = `Last ned · ${mb(it.s)}`;
+  const dl = $('#vDl'); dl.href = src(it); dl.download = it.n;
+  dl.textContent = `Last ned · ${mb(sizeOf(it))}`;
   prepShare(it);
   // preload neighbours' preview images
   [list[cur+1], list[cur-1], list[cur+2]].forEach(n => { if (n && n.t === 'i') { const p = new Image(); p.src = n.w; } });
@@ -417,10 +444,11 @@ $('#vShare').onclick = async () => {
   const it = list[cur], sh = $('#vShare');
   let f = ready.get(keyOf(it));
   if (!f) {
-    sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Henter …';
+    sh.disabled = true; sh.dataset.busy = 1; onProg(keyOf(it));
+    if (!prog.has(keyOf(it))) sh.innerHTML = '<span class="spin"></span> Henter …';
     try { f = await warm(it, true); }
-    catch { sh.disabled = false; sh.textContent = 'Feil — prøv igjen'; return; }
-    sh.disabled = false;
+    catch { sh.disabled = false; delete sh.dataset.busy; sh.textContent = 'Feil — prøv igjen'; return; }
+    sh.disabled = false; delete sh.dataset.busy;
     if (list[cur] !== it || !viewer.classList.contains('open')) return;
   }
   const r = await shareFiles([f]);

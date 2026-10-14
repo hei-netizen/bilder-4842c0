@@ -35,6 +35,9 @@ for p in sorted(list((MEDIA / "foto").glob("*.jpg")) + list((MEDIA / "video").gl
         it["b"] = "data:image/jpeg;base64," + base64.b64encode(lqip.read_bytes()).decode()
     if is_video:
         it["d"] = probe_duration(p)
+        hevc = MEDIA / "hevc" / p.name
+        if hevc.exists():
+            it["h"], it["hs"] = f"media/hevc/{p.name}", hevc.stat().st_size
     else:
         it["w"] = f"media/web/{p.name}"
         it["wh"] = img_size(MEDIA / "web" / p.name)
