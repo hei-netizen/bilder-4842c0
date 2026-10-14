@@ -192,21 +192,33 @@ async function rotateBlob(b, r){
   if (!out) throw new Error('canvas');
   return out;
 }
-function getFile(it){
+// Background prefetches go through a small queue so they don't choke the connection;
+// "urgent" fetches (the file on screen) skip the queue.
+const CAP = 50, queue = [];
+let active = 0;
+function pump(){
+  while (active < 3 && queue.length) {
+    const [fn, res, rej] = queue.shift(); active++;
+    fn().then(res, rej).finally(() => { active--; pump(); });
+  }
+}
+const queued = fn => new Promise((res, rej) => { queue.push([fn, res, rej]); pump(); });
+function getFile(it, urgent){
   const key = keyOf(it), r = rotOf(it);
   if (!cache.has(key)) {
-    const p = fetch(it.f).then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); })
+    const run = () => fetch(it.f).then(res => { if (!res.ok) throw new Error(res.status); return res.blob(); });
+    const p = (urgent ? run() : queued(run))
       .then(b => r ? rotateBlob(b, r) : b)
       .then(b => new File([b], it.n, {type: mime(it)}));
     p.catch(() => cache.delete(key));
     cache.set(key, p);
-    if (cache.size > 12) cache.delete(cache.keys().next().value);
+    if (cache.size > CAP) cache.delete(cache.keys().next().value);
   }
   return cache.get(key);
 }
-async function warm(it){
-  const key = keyOf(it), f = await getFile(it);
-  ready.set(key, f); if (ready.size > 12) ready.delete(ready.keys().next().value);
+async function warm(it, urgent){
+  const key = keyOf(it), f = await getFile(it, urgent);
+  ready.set(key, f); if (ready.size > CAP) ready.delete(ready.keys().next().value);
   return f;
 }
 
@@ -220,9 +232,14 @@ async function download(it){
   markSaved([it]);
 }
 
+// 'ok' | 'abort' | 'gesture' (iOS wants a fresh tap — happens if the download took too long) | 'error'
 async function shareFiles(files){
-  try { await navigator.share({files}); return true; }
-  catch (e) { if (e.name !== 'AbortError') toast('Klarte ikke å åpne delingsmenyen — prøv færre filer om gangen.'); return false; }
+  try { await navigator.share({files}); return 'ok'; }
+  catch (e) {
+    if (e.name === 'AbortError') return 'abort';
+    if (e.name === 'NotAllowedError') return 'gesture';
+    toast('Klarte ikke å åpne delingsmenyen — prøv færre filer om gangen.'); return 'error';
+  }
 }
 
 // --- Grid ---
@@ -268,9 +285,12 @@ document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
 });
 
 // --- Selection ---
-let prepared = null; // Array<File> ready to share
+// Originals start downloading in the background the moment something is selected,
+// so «Lagre» can open the share sheet right away.
+const selected = () => ITEMS.filter(i => sel.has(i.f));
+function prefetchSel(){ selected().forEach(it => { if (!ready.has(keyOf(it))) warm(it).then(updateSel, () => {}); }); }
 function setSelecting(on){
-  selecting = on; sel.clear(); prepared = null;
+  selecting = on; sel.clear();
   document.body.classList.toggle('selecting', on);
   $('#selBtn').textContent = on ? 'Avbryt' : 'Velg';
   $('#selBtn').classList.toggle('on', on);
@@ -282,35 +302,44 @@ $('#selBtn').onclick = () => setSelecting(!selecting);
 $('#allBtn').onclick = () => {
   const all = list.every(i => sel.has(i.f));
   list.forEach(i => all ? sel.delete(i.f) : sel.add(i.f));
-  prepared = null; render(); updateSel();
+  render(); updateSel(); prefetchSel();
 };
-function toggle(it, el){ sel.has(it.f) ? sel.delete(it.f) : sel.add(it.f); el.classList.toggle('sel', sel.has(it.f)); prepared = null; updateSel(); }
+function toggle(it, el){ sel.has(it.f) ? sel.delete(it.f) : sel.add(it.f); el.classList.toggle('sel', sel.has(it.f)); updateSel(); prefetchSel(); }
 
+let selBusy = false;
 function updateSel(){
-  const items = ITEMS.filter(i => sel.has(i.f));
+  const items = selected();
   const size = items.reduce((a, i) => a + i.s, 0);
-  $('#selCount').innerHTML = `${items.length} valgt<small>${items.length ? mb(size) : 'Trykk på bildene du vil ha'}</small>`;
+  const nReady = items.filter(i => ready.has(keyOf(i))).length;
+  const status = !items.length ? 'Trykk på bildene du vil ha'
+    : mb(size) + (canShareFiles && nReady < items.length ? ` · henter ${nReady}/${items.length}` : canShareFiles ? ' · klar' : '');
+  $('#selCount').innerHTML = `${items.length} valgt<small>${status}</small>`;
   $('#allBtn').textContent = list.length && list.every(i => sel.has(i.f)) ? 'Fjern alle' : 'Velg alle';
   const btn = $('#selSave');
+  if (selBusy) return;
   btn.disabled = !items.length;
-  btn.textContent = !canShareFiles ? 'Last ned' : prepared ? `Lagre ${items.length} på iPhone` : 'Gjør klar';
+  btn.textContent = !canShareFiles ? 'Last ned' : 'Lagre på iPhone';
 }
 $('#selSave').onclick = async () => {
-  const items = ITEMS.filter(i => sel.has(i.f));
+  const items = selected(), btn = $('#selSave');
   if (!canShareFiles) {
     for (const it of items) { await download(it); await new Promise(r => setTimeout(r, 450)); }
     return;
   }
-  if (prepared) { if (await shareFiles(prepared)) { markSaved(items); toast('Ferdig ✓'); } return; }
-  const btn = $('#selSave'); btn.disabled = true;
-  let done = 0;
-  btn.innerHTML = `<span class="spin"></span> 0 / ${items.length}`;
-  try {
-    const files = await Promise.all(items.map(it => getFile(it).then(f => { btn.innerHTML = `<span class="spin"></span> ${++done} / ${items.length}`; return f; })));
-    prepared = files;
-    btn.disabled = false; updateSel();
-    toast('Klar! Trykk «Lagre» en gang til.');
-  } catch { btn.disabled = false; updateSel(); toast('Noe gikk galt under nedlastingen. Prøv igjen.'); }
+  let files = items.map(i => ready.get(keyOf(i)));
+  if (files.some(f => !f)) {
+    selBusy = true; btn.disabled = true;
+    let done = files.filter(Boolean).length;
+    btn.innerHTML = `<span class="spin"></span> ${done} / ${items.length}`;
+    try {
+      files = await Promise.all(items.map((it, k) => files[k] ? files[k] :
+        warm(it, true).then(f => { btn.innerHTML = `<span class="spin"></span> ${++done} / ${items.length}`; return f; })));
+    } catch { selBusy = false; updateSel(); toast('Noe gikk galt under nedlastingen. Prøv igjen.'); return; }
+    selBusy = false; updateSel();
+  }
+  const r = await shareFiles(files);
+  if (r === 'ok') { markSaved(items); toast('Ferdig ✓'); }
+  else if (r === 'gesture') toast('Alt er klart — trykk «Lagre på iPhone» igjen.');
 };
 
 // --- Viewer ---
@@ -343,12 +372,12 @@ function shareLabel(it){
 function prepShare(it){
   const sh = $('#vShare');
   if (!canShareFiles) { sh.hidden = true; $('#vDl').classList.replace('ghost', 'primary'); return; }
-  sh.hidden = false;
-  if (ready.has(keyOf(it))) { sh.disabled = false; sh.textContent = shareLabel(it); return; }
-  sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Gjør klar';
-  const key = keyOf(it);
-  warm(it).then(() => { if (list[cur] === it && keyOf(it) === key) { sh.disabled = false; sh.textContent = shareLabel(it); } })
-    .catch(() => { if (list[cur] === it) { sh.textContent = 'Feil — prøv igjen'; sh.disabled = false; } });
+  sh.hidden = false; sh.disabled = false; sh.textContent = shareLabel(it);
+  // fetch this original now, then the next photo's in the background
+  warm(it, true).then(() => {
+    const n = list[cur + 1];
+    if (list[cur] === it && n && n.t === 'i') warm(n).catch(() => {});
+  }, () => {});
 }
 
 function show(){
@@ -382,13 +411,21 @@ $('#vRot').onclick = () => {
   angle[it.n] = (angle[it.n] ?? rotOf(it)) + 90;
   if (r) rot[it.n] = r; else delete rot[it.n];
   persist('rot', rot);
-  prepared = null;
   fitImg(); updateTile(it); prepShare(it);
 };
 $('#vShare').onclick = async () => {
-  const it = list[cur], f = ready.get(keyOf(it));
-  if (!f) { prepShare(it); return; }
-  if (await shareFiles([f])) { markSaved([it]); $('#vShare').textContent = shareLabel(it); toast('Lagret ✓'); }
+  const it = list[cur], sh = $('#vShare');
+  let f = ready.get(keyOf(it));
+  if (!f) {
+    sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Henter …';
+    try { f = await warm(it, true); }
+    catch { sh.disabled = false; sh.textContent = 'Feil — prøv igjen'; return; }
+    sh.disabled = false;
+    if (list[cur] !== it || !viewer.classList.contains('open')) return;
+  }
+  const r = await shareFiles([f]);
+  if (r === 'ok') { markSaved([it]); toast('Lagret ✓'); }
+  sh.textContent = r === 'gesture' ? 'Klar — trykk for å lagre' : shareLabel(it);
 };
 $('#vDl').onclick = e => { e.preventDefault(); download(list[cur]).then(() => prepShare(list[cur])); };
 $('#vClose').onclick = () => close();
