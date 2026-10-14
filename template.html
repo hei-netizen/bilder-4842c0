@@ -193,6 +193,24 @@ async function rotateBlob(b, r){
   const out = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92));
   c.width = c.height = 0;
   if (!out) throw new Error('canvas');
+  return withExif(b, out);
+}
+// Canvas output has no metadata — copy the original's EXIF block (capture date, camera) into the
+// rotated JPEG so it lands on the right day in Photos. The originals carry no Orientation tag.
+async function withExif(orig, out){
+  try {
+    const a = new Uint8Array(await orig.slice(0, 131072).arrayBuffer());
+    if (a[0] !== 0xFF || a[1] !== 0xD8) return out;
+    for (let i = 2; i + 5 < a.length && a[i] === 0xFF;) {
+      const m = a[i + 1], len = (a[i + 2] << 8) | a[i + 3];
+      if (m === 0xE1 && a[i + 4] === 0x45 && a[i + 5] === 0x78) {
+        const o = new Uint8Array(await out.arrayBuffer());
+        return new Blob([o.subarray(0, 2), a.slice(i, i + 2 + len), o.subarray(2)], {type: 'image/jpeg'});
+      }
+      if (m === 0xDA) break;
+      i += 2 + len;
+    }
+  } catch {}
   return out;
 }
 // Streams the download so the save button can show how far along it is
