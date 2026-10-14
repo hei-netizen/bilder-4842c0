@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noimageindex">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0c0c0d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>__TITLE__</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23f2c14e'/%3E%3Ccircle cx='32' cy='34' r='12' fill='none' stroke='%230c0c0d' stroke-width='5'/%3E%3Crect x='14' y='18' width='36' height='32' rx='6' fill='none' stroke='%230c0c0d' stroke-width='5'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0c0c0d; --surface:#18181a; --surface-2:#232326; --line:#2c2c30;
+  --text:#f4f3f0; --muted:#a3a19c; --accent:#f2c14e; --accent-ink:#1a1608;
+  --radius:14px; --gutter:16px;
+  --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;padding:0}
+button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Header */
+header{position:sticky;top:0;z-index:20;padding:calc(var(--safe-t) + 14px) var(--gutter) 12px;
+  background:rgba(12,12,13,.86);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);
+  border-bottom:1px solid transparent;transition:border-color .2s}
+header.scrolled{border-bottom-color:var(--line)}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;max-width:1280px;margin:0 auto}
+h1{font-size:28px;line-height:1.1;letter-spacing:-.02em;margin:0;font-weight:700}
+.sub{color:var(--muted);font-size:14px;margin-top:4px}
+.pill{height:36px;padding:0 16px;border-radius:999px;background:var(--surface-2);font-size:15px;font-weight:600;white-space:nowrap}
+.pill.on{background:var(--accent);color:var(--accent-ink)}
+.bar{display:flex;gap:8px;align-items:center;justify-content:space-between;max-width:1280px;margin:12px auto 0}
+.seg{display:inline-flex;background:var(--surface);border-radius:10px;padding:3px;gap:2px}
+.seg button{height:32px;padding:0 14px;border-radius:8px;font-size:14px;font-weight:600;color:var(--muted);transition:background .15s,color .15s}
+.seg button[aria-pressed=true]{background:var(--surface-2);color:var(--text)}
+.linkbtn{font-size:14px;font-weight:600;color:var(--accent);height:32px;padding:0 4px}
+.hint{max-width:1280px;margin:10px auto 0;font-size:13px;color:var(--muted);display:flex;gap:8px;align-items:flex-start}
+.hint svg{flex:none;margin-top:2px}
+
+/* Grid */
+main{max-width:1280px;margin:0 auto;padding:4px 0 calc(110px + var(--safe-b))}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+@media(min-width:640px){.grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;padding:0 var(--gutter)}}
+.tile{position:relative;aspect-ratio:1;background:var(--surface);overflow:hidden;display:block;width:100%}
+@media(min-width:640px){.tile{border-radius:10px}}
+.tile img{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .3s,transform .25s}
+.tile img.ok{opacity:1}
+.tile:active img{transform:scale(.97)}
+.badge{position:absolute;right:6px;bottom:6px;display:flex;align-items:center;gap:4px;font-size:12px;font-weight:600;
+  padding:3px 7px;border-radius:999px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.check{position:absolute;right:6px;top:6px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;
+  background:rgba(0,0,0,.25);display:none;align-items:center;justify-content:center}
+.selecting .check{display:flex}
+.tile.sel .check{background:var(--accent);border-color:var(--accent)}
+.tile.sel img{transform:scale(.9);border-radius:8px}
+.check svg{opacity:0}.tile.sel .check svg{opacity:1}
+
+/* Select bar */
+.selbar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding:12px var(--gutter) calc(12px + var(--safe-b));
+  background:rgba(24,24,26,.92);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border-top:1px solid var(--line);
+  display:flex;align-items:center;gap:12px;transform:translateY(110%);transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.selbar.show{transform:none}
+.selbar .count{flex:1;font-size:15px;font-weight:600}
+.selbar .count small{display:block;color:var(--muted);font-weight:400;font-size:13px}
+.btn{height:46px;padding:0 20px;border-radius:12px;font-weight:700;font-size:16px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:var(--surface-2);color:var(--text)}
+.btn[disabled]{opacity:.45;pointer-events:none}
+
+/* Viewer */
+.viewer{position:fixed;inset:0;z-index:50;background:#000;display:none;flex-direction:column;touch-action:pan-y}
+.viewer.open{display:flex}
+.vtop{position:absolute;top:0;left:0;right:0;z-index:2;display:flex;align-items:center;justify-content:space-between;
+  padding:calc(var(--safe-t) + 10px) 10px 10px;background:linear-gradient(rgba(0,0,0,.6),transparent);transition:opacity .2s}
+.vtop .ctr{font-size:15px;font-weight:600}
+.iconbtn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.12)}
+.stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.stage img,.stage video{max-width:100%;max-height:100%;object-fit:contain;display:block;user-select:none;-webkit-user-select:none}
+.stage .track{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
+.nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;display:none}
+@media(hover:hover){.nav{display:flex}}
+.nav.prev{left:12px}.nav.next{right:12px}
+.vbot{position:absolute;left:0;right:0;bottom:0;z-index:2;padding:14px var(--gutter) calc(16px + var(--safe-b));
+  background:linear-gradient(transparent,rgba(0,0,0,.75) 40%);display:flex;gap:10px;justify-content:center;transition:opacity .2s}
+.vbot .btn{flex:1;max-width:260px}
+.chrome-off .vtop,.chrome-off .vbot{opacity:0;pointer-events:none}
+.spin{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.toast{position:fixed;left:50%;bottom:calc(90px + var(--safe-b));transform:translate(-50%,20px);z-index:80;max-width:calc(100% - 32px);
+  background:var(--surface-2);color:var(--text);padding:12px 16px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.01s!important}}
+</style>
+</head>
+<body>
+<header id="hdr">
+  <div class="top">
+    <div>
+      <h1>__TITLE__</h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <button class="pill" id="selBtn" aria-pressed="false">Velg</button>
+  </div>
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Filter">
+      <button data-f="all" aria-pressed="true">Alle</button>
+      <button data-f="i" aria-pressed="false">Bilder</button>
+      <button data-f="v" aria-pressed="false">Video</button>
+    </div>
+    <button class="linkbtn" id="allBtn" hidden>Velg alle</button>
+  </div>
+  <p class="hint" id="hint" hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <span>Trykk på «Lagre på iPhone», og velg «Arkiver bilde» / «Arkiver video» i delingsmenyen — da havner det rett i Bilder-appen.</span>
+  </p>
+</header>
+
+<main><div class="grid" id="grid"></div></main>
+
+<div class="selbar" id="selbar">
+  <div class="count" id="selCount">0 valgt<small></small></div>
+  <button class="btn primary" id="selSave" disabled>Lagre</button>
+</div>
+
+<div class="viewer" id="viewer" role="dialog" aria-modal="true" aria-label="Visning">
+  <div class="vtop">
+    <button class="iconbtn" id="vClose" aria-label="Lukk"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <div class="ctr" id="vCtr"></div>
+    <span style="width:44px"></span>
+  </div>
+  <div class="stage" id="stage"></div>
+  <button class="iconbtn nav prev" id="vPrev" aria-label="Forrige"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="iconbtn nav next" id="vNext" aria-label="Neste"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="vbot">
+    <button class="btn primary" id="vShare" hidden></button>
+    <a class="btn ghost" id="vDl" download>Last ned</a>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const ITEMS = __ITEMS__;
+const $ = s => document.querySelector(s);
+const grid = $('#grid'), viewer = $('#viewer'), stage = $('#stage');
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const probe = new File([new Blob(['x'], {type:'image/jpeg'})], 'x.jpg', {type:'image/jpeg'});
+const canShareFiles = !!(navigator.canShare && navigator.canShare({files:[probe]}));
+const mime = it => it.t === 'v' ? 'video/mp4' : 'image/jpeg';
+const mb = b => b >= 1e6 ? (b/1e6).toFixed(b >= 1e8 ? 0 : 1).replace('.', ',') + ' MB' : Math.round(b/1e3) + ' kB';
+const dur = s => { s = Math.round(s); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+
+let filter = 'all', list = ITEMS, selecting = false, sel = new Set(), cur = -1;
+
+// --- File cache (Web Share must be called directly from a tap, so we fetch ahead of time) ---
+const cache = new Map();
+function getFile(it){
+  if (!cache.has(it.f)) {
+    const p = fetch(it.f).then(r => { if (!r.ok) throw new Error(r.status); return r.blob(); })
+      .then(b => new File([b], it.n, {type: mime(it)}));
+    p.catch(() => cache.delete(it.f));
+    cache.set(it.f, p);
+    if (cache.size > 12) cache.delete(cache.keys().next().value);
+  }
+  return cache.get(it.f);
+}
+const ready = new Map(); // f -> File, once resolved
+async function warm(it){ const f = await getFile(it); ready.set(it.f, f); if (ready.size > 12) ready.delete(ready.keys().next().value); return f; }
+
+function toast(msg, ms=2800){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms); }
+
+function download(it){ const a = document.createElement('a'); a.href = it.f; a.download = it.n; document.body.appendChild(a); a.click(); a.remove(); }
+
+async function shareFiles(files){
+  try { await navigator.share({files}); return true; }
+  catch (e) { if (e.name !== 'AbortError') toast('Klarte ikke å åpne delingsmenyen — prøv færre filer om gangen.'); return false; }
+}
+
+// --- Grid ---
+function render(){
+  list = filter === 'all' ? ITEMS : ITEMS.filter(i => i.t === filter);
+  const nI = ITEMS.filter(i => i.t === 'i').length, nV = ITEMS.length - nI;
+  $('#sub').textContent = `${nI} bilder · ${nV} videoer`;
+  grid.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  list.forEach((it, idx) => {
+    const b = document.createElement('button');
+    b.className = 'tile' + (sel.has(it.f) ? ' sel' : '');
+    b.setAttribute('aria-label', (it.t === 'v' ? 'Video ' : 'Bilde ') + it.n);
+    const img = new Image(); img.loading = 'lazy'; img.decoding = 'async'; img.alt = ''; img.src = it.th;
+    img.onload = () => img.classList.add('ok');
+    b.appendChild(img);
+    if (it.t === 'v') b.insertAdjacentHTML('beforeend', `<span class="badge"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 1l7 4-7 4z" fill="#fff"/></svg>${dur(it.d)}</span>`);
+    b.insertAdjacentHTML('beforeend', '<span class="check"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1608" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>');
+    b.onclick = () => selecting ? toggle(it, b) : open(idx);
+    frag.appendChild(b);
+  });
+  grid.appendChild(frag);
+}
+
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => {
+  filter = b.dataset.f;
+  document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  render();
+});
+
+// --- Selection ---
+function setSelecting(on){
+  selecting = on; sel.clear(); prepared = null;
+  document.body.classList.toggle('selecting', on);
+  $('#selBtn').textContent = on ? 'Avbryt' : 'Velg';
+  $('#selBtn').classList.toggle('on', on);
+  $('#allBtn').hidden = !on;
+  $('#selbar').classList.toggle('show', on);
+  render(); updateSel();
+}
+$('#selBtn').onclick = () => setSelecting(!selecting);
+$('#allBtn').onclick = () => {
+  const all = list.every(i => sel.has(i.f));
+  list.forEach(i => all ? sel.delete(i.f) : sel.add(i.f));
+  prepared = null; render(); updateSel();
+};
+function toggle(it, el){ sel.has(it.f) ? sel.delete(it.f) : sel.add(it.f); el.classList.toggle('sel', sel.has(it.f)); prepared = null; updateSel(); }
+
+let prepared = null; // Array<File> ready to share
+function updateSel(){
+  const items = ITEMS.filter(i => sel.has(i.f));
+  const size = items.reduce((a, i) => a + i.s, 0);
+  $('#selCount').innerHTML = `${items.length} valgt<small>${items.length ? mb(size) : 'Trykk på bildene du vil ha'}</small>`;
+  $('#allBtn').textContent = list.length && list.every(i => sel.has(i.f)) ? 'Fjern alle' : 'Velg alle';
+  const btn = $('#selSave');
+  btn.disabled = !items.length;
+  btn.textContent = !canShareFiles ? 'Last ned' : prepared ? `Lagre ${items.length} på iPhone` : 'Gjør klar';
+}
+$('#selSave').onclick = async () => {
+  const items = ITEMS.filter(i => sel.has(i.f));
+  if (!canShareFiles) {
+    for (const it of items) { download(it); await new Promise(r => setTimeout(r, 450)); }
+    return;
+  }
+  if (prepared) { if (await shareFiles(prepared)) toast('Ferdig ✓'); return; }
+  const btn = $('#selSave'); btn.disabled = true;
+  let done = 0;
+  btn.innerHTML = `<span class="spin"></span> 0 / ${items.length}`;
+  try {
+    const files = await Promise.all(items.map(it => getFile(it).then(f => { btn.innerHTML = `<span class="spin"></span> ${++done} / ${items.length}`; return f; })));
+    prepared = files;
+    btn.disabled = false; updateSel();
+    toast('Klar! Trykk «Lagre» en gang til.');
+  } catch { btn.disabled = false; updateSel(); toast('Noe gikk galt under nedlastingen. Prøv igjen.'); }
+};
+
+// --- Viewer ---
+function open(idx){
+  cur = idx; viewer.classList.add('open'); viewer.classList.remove('chrome-off');
+  document.body.style.overflow = 'hidden';
+  history.pushState({v:1}, ''); show();
+}
+function close(fromPop){
+  if (!viewer.classList.contains('open')) return;
+  stage.querySelector('video')?.pause();
+  viewer.classList.remove('open'); stage.innerHTML = ''; document.body.style.overflow = '';
+  if (!fromPop) history.back();
+}
+window.addEventListener('popstate', () => close(true));
+
+function show(){
+  const it = list[cur]; if (!it) return;
+  $('#vCtr').textContent = `${cur + 1} / ${list.length}`;
+  stage.innerHTML = '';
+  let el;
+  if (it.t === 'v') {
+    el = document.createElement('video');
+    el.src = it.f; el.controls = true; el.playsInline = true; el.preload = 'metadata'; el.poster = it.th;
+  } else {
+    el = new Image(); el.src = it.w; el.alt = it.n; el.draggable = false;
+    el.onclick = () => viewer.classList.toggle('chrome-off');
+  }
+  stage.appendChild(el);
+  const dl = $('#vDl'); dl.href = it.f; dl.download = it.n;
+  dl.textContent = `Last ned · ${mb(it.s)}`;
+  const sh = $('#vShare');
+  if (canShareFiles) {
+    sh.hidden = false; dl.classList.replace('primary','ghost');
+    const label = it.t === 'v' ? 'Lagre video' : 'Lagre på iPhone';
+    if (ready.has(it.f)) { sh.disabled = false; sh.textContent = label; }
+    else {
+      sh.disabled = true; sh.innerHTML = '<span class="spin"></span> Gjør klar';
+      warm(it).then(() => { if (list[cur] === it) { sh.disabled = false; sh.textContent = label; } })
+        .catch(() => { if (list[cur] === it) sh.textContent = 'Feil — prøv igjen'; sh.disabled = false; });
+    }
+  } else { sh.hidden = true; dl.classList.replace('ghost','primary'); }
+  // preload neighbours' preview images
+  [list[cur+1], list[cur-1]].forEach(n => { if (n && n.t === 'i') { const p = new Image(); p.src = n.w; } });
+}
+function go(d){ const n = cur + d; if (n < 0 || n >= list.length) return; stage.querySelector('video')?.pause(); cur = n; show(); }
+$('#vShare').onclick = async () => {
+  const it = list[cur], f = ready.get(it.f);
+  if (!f) { warm(it).then(show); return; }
+  if (await shareFiles([f])) toast('Lagret ✓');
+};
+$('#vClose').onclick = () => close();
+$('#vPrev').onclick = () => go(-1);
+$('#vNext').onclick = () => go(1);
+document.addEventListener('keydown', e => {
+  if (!viewer.classList.contains('open')) return;
+  if (e.key === 'Escape') close(); else if (e.key === 'ArrowRight') go(1); else if (e.key === 'ArrowLeft') go(-1);
+});
+// swipe
+let sx = 0, sy = 0, st = 0;
+stage.addEventListener('touchstart', e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; st = Date.now(); }, {passive:true});
+stage.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+  if (e.target.tagName === 'VIDEO' && Math.abs(dy) < 40 && Math.abs(dx) < 80) return;
+  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) go(dx < 0 ? 1 : -1);
+  else if (dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.5) close();
+}, {passive:true});
+
+window.addEventListener('scroll', () => $('#hdr').classList.toggle('scrolled', scrollY > 4), {passive:true});
+$('#hint').hidden = !(isIOS && canShareFiles);
+render(); updateSel();
+</script>
+</body>
+</html>
